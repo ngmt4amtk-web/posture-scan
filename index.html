@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>姿勢スキャン — 姿勢チェック＆データ出力</title>
+<title>姿勢スキャン — 姿勢計測＆データ出力</title>
 <style>
 /* ── CSS Variables ── */
 :root {
@@ -18,7 +18,6 @@
   --green: #34C759;
   --orange: #FF9500;
   --red: #FF3B30;
-  --yellow: #FFCC00;
   --cyan: #32ADE6;
   --overlay-skeleton: rgba(50, 173, 230, 0.7);
   --overlay-point: rgba(255, 255, 255, 0.9);
@@ -346,87 +345,45 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ── Screen 4: Results ── */
-#screenResults {
-  padding: 0;
+/* ── Screen 4: Export ── */
+#screenExport {
+  padding: 0 20px;
+  justify-content: center;
+  gap: 20px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
-.results-header {
+.export-header {
   text-align: center;
-  padding: 56px 20px 16px;
+  padding: 56px 0 12px;
 }
-.results-header .check-icon {
+.export-header .check-icon {
   width: 64px; height: 64px;
+  background: var(--green);
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   margin: 0 auto 16px;
 }
-.results-header .check-icon svg { width: 32px; height: 32px; fill: #fff; }
-.results-header h1 { font-size: 24px; font-weight: 700; }
-.results-header p { font-size: 14px; color: var(--text-tertiary); margin-top: 6px; }
+.export-header .check-icon svg { width: 32px; height: 32px; fill: #fff; }
+.export-header h1 { font-size: 24px; font-weight: 700; }
+.export-header p { font-size: 14px; color: var(--text-tertiary); margin-top: 6px; }
 
-/* Score circle */
-.score-circle-container {
-  display: flex; justify-content: center; padding: 8px 0 16px;
+.export-stats {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+  padding: 0 4px;
 }
-.score-circle {
-  width: 120px; height: 120px; position: relative;
-}
-.score-circle svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.score-circle .bg { fill: none; stroke: #E5E5EA; stroke-width: 8; }
-.score-circle .fg { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
-.score-circle .score-text {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  font-size: 32px; font-weight: 800;
-}
-.score-circle .score-label {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, calc(-50% + 22px));
-  font-size: 11px; color: var(--text-tertiary); font-weight: 500;
-}
-
-/* Metric cards */
-.results-content { padding: 0 16px 120px; display: flex; flex-direction: column; gap: 12px; }
-.metric-card {
+.export-stat {
   background: var(--card-bg);
-  border-radius: 12px;
-  padding: 14px 16px;
-  display: flex; align-items: center; gap: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  border-radius: 10px;
+  padding: 12px 8px;
+  text-align: center;
 }
-.metric-card .metric-icon {
-  width: 36px; height: 36px; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; flex-shrink: 0;
-}
-.metric-card .metric-info { flex: 1; min-width: 0; }
-.metric-card .metric-name { font-size: 14px; font-weight: 600; }
-.metric-card .metric-value { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
-.metric-card .metric-rating {
-  font-size: 12px; font-weight: 600; padding: 4px 10px;
-  border-radius: 99px; white-space: nowrap;
-}
-.rating-good { background: #E8F5E9; color: #2E7D32; }
-.rating-mild { background: #FFF8E1; color: #F57F17; }
-.rating-moderate { background: #FFF3E0; color: #E65100; }
-.rating-poor { background: #FFEBEE; color: #C62828; }
-.rating-severe { background: #F3E5F5; color: #7B1FA2; }
+.export-stat .value { font-size: 20px; font-weight: 700; color: var(--primary); }
+.export-stat .label { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
 
-.section-title {
-  font-size: 13px; font-weight: 600; color: var(--text-tertiary);
-  text-transform: uppercase; letter-spacing: 0.5px;
-  padding: 8px 0 0;
-}
+.export-buttons { display: flex; flex-direction: column; gap: 12px; padding: 0 4px; }
 
-.results-bottom {
-  position: fixed; bottom: 0; left: 0; right: 0;
-  padding: 12px 20px 32px;
-  background: linear-gradient(transparent, var(--bg) 20%);
-  z-index: 10;
-  display: flex; flex-direction: column; gap: 8px;
-}
-.results-bottom .btn-row { display: flex; gap: 8px; }
-.results-bottom .btn-row .btn { font-size: 14px; padding: 12px; }
+.export-btn-info { font-size: 12px; color: var(--text-tertiary); text-align: center; margin-top: -4px; }
 
 /* ── Loading Screen ── */
 #screenLoading {
@@ -597,39 +554,37 @@ html, body {
   </div>
 </div>
 
-<!-- ============ Screen 4: Results ============ -->
-<div class="screen" id="screenResults">
-  <div class="results-header">
-    <div class="check-icon" id="resultIcon">
+<!-- ============ Screen 4: Export ============ -->
+<div class="screen" id="screenExport">
+  <div class="export-header">
+    <div class="check-icon">
       <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
     </div>
-    <h1>姿勢スコア</h1>
-    <p id="resultSummaryText">簡易モード・15秒間</p>
+    <h1>計測完了</h1>
+    <p id="exportSummaryText">簡易モード・15秒間</p>
   </div>
 
-  <!-- Score circle -->
-  <div class="score-circle-container">
-    <div class="score-circle">
-      <svg viewBox="0 0 120 120">
-        <circle class="bg" cx="60" cy="60" r="52"/>
-        <circle class="fg" id="scoreArc" cx="60" cy="60" r="52"
-          stroke-dasharray="326.7" stroke-dashoffset="326.7"/>
-      </svg>
-      <div class="score-text" id="scoreText">--</div>
-      <div class="score-label">/ 100</div>
+  <div class="export-stats" id="exportStats">
+    <div class="export-stat">
+      <div class="value" id="statFrames">0</div>
+      <div class="label">フレーム</div>
+    </div>
+    <div class="export-stat">
+      <div class="value" id="statMetrics">0</div>
+      <div class="label">指標</div>
+    </div>
+    <div class="export-stat">
+      <div class="value" id="statFps">0</div>
+      <div class="label">平均FPS</div>
     </div>
   </div>
 
-  <div class="results-content" id="resultsContent">
-    <!-- Dynamic metric cards inserted here -->
-  </div>
-
-  <div class="results-bottom">
-    <div class="btn-row">
-      <button class="btn btn-primary" id="btnExportSimple" style="flex:1;">📄 簡易txt</button>
-      <button class="btn btn-outline" id="btnExportDetail" style="flex:1;">📊 詳細txt</button>
-    </div>
-    <button class="btn btn-secondary" id="btnRetry">もう一度計測する</button>
+  <div class="export-buttons">
+    <button class="btn btn-primary" id="btnExportSimple">📄 簡易エクスポート</button>
+    <p class="export-btn-info">サマリーのみ — AI相談・縦断比較に</p>
+    <button class="btn btn-outline" id="btnExportDetail">📊 詳細エクスポート</button>
+    <p class="export-btn-info">全フレームデータ — 詳細分析・研究に</p>
+    <button class="btn btn-secondary" id="btnRetry" style="margin-top:8px;">もう一度計測する</button>
   </div>
 </div>
 
@@ -688,87 +643,6 @@ const SIDE_METRIC_KEYS = [
   'cva','forward_shoulder_angle','thoracic_kyphosis',
   'pelvic_anterior_tilt','plumb_line_deviation'
 ];
-
-// ── Metric Definitions (for display & scoring) ──
-const METRIC_DEFS = {
-  // Front metrics
-  head_lateral_tilt: {
-    name: '頭部横傾斜', icon: '🧠', unit: '°',
-    ideal: 0, thresholds: [3, 6, 10, 15], // |value| boundaries: good/mild/moderate/poor/severe
-    description: '頭が左右に傾いている角度（0°が理想）',
-    useAbsolute: true,
-  },
-  shoulder_asymmetry: {
-    name: '肩の左右差', icon: '💪', unit: '°',
-    ideal: 0, thresholds: [2, 5, 8, 12],
-    description: '左右の肩の高さの差（0°が理想）',
-    useAbsolute: true,
-  },
-  trunk_lateral_shift: {
-    name: '体幹側方偏位', icon: '🏛️', unit: '°',
-    ideal: 0, thresholds: [2, 4, 7, 10],
-    description: '体幹が左右にずれている角度（0°が理想）',
-    useAbsolute: true,
-  },
-  pelvic_tilt: {
-    name: '骨盤左右傾斜', icon: '🦴', unit: '°',
-    ideal: 0, thresholds: [2, 4, 7, 10],
-    description: '骨盤が左右に傾いている角度（0°が理想）',
-    useAbsolute: true,
-  },
-  knee_valgus_angle: {
-    name: '膝アライメント', icon: '🦵', unit: '°',
-    ideal: 6, thresholds: [3, 5, 8, 12], // deviation from ideal
-    description: '膝の外反角度（正常: 5〜7°）',
-    useAbsolute: true,
-  },
-  // Side metrics
-  cva: {
-    name: '頭部前方変位 (CVA)', icon: '👤', unit: '°',
-    ideal: 55, thresholds: [5, 10, 15, 20], // deviation from ideal (55° is normal)
-    description: '頭蓋椎骨角（>53°正常, <45°重度）',
-    useAbsolute: true,
-    invertScore: true, // lower = worse
-  },
-  forward_shoulder_angle: {
-    name: '巻き肩 (FSA)', icon: '🔄', unit: '°',
-    ideal: 0, thresholds: [5, 10, 15, 20],
-    description: '肩の前方偏位角度（0°が理想、>15°で巻き肩）',
-    useAbsolute: true,
-  },
-  thoracic_kyphosis: {
-    name: '猫背', icon: '🐱', unit: '°',
-    ideal: 30, thresholds: [5, 10, 15, 20], // deviation from ideal 30°
-    description: '胸椎後弯角度（正常: 20〜40°）',
-    useAbsolute: true,
-  },
-  pelvic_anterior_tilt: {
-    name: '骨盤前傾', icon: '⚖️', unit: '°',
-    ideal: 10, thresholds: [5, 10, 15, 20],
-    description: '骨盤前傾角度（正常: 7〜13°）',
-    useAbsolute: true,
-  },
-  plumb_line_deviation: {
-    name: 'プラムライン偏差', icon: '📐', unit: '%',
-    ideal: 0, thresholds: [2, 4, 6, 8],
-    description: '理想的な垂直軸からのずれ（0が理想）',
-    useAbsolute: true,
-  },
-};
-
-const RATING_LABELS = ['良好', 'やや注意', '注意', '要改善', '要相談'];
-const RATING_CLASSES = ['rating-good', 'rating-mild', 'rating-moderate', 'rating-poor', 'rating-severe'];
-const RATING_SCORES = [100, 75, 50, 25, 0]; // score per rating level
-
-function rateMetric(key, value) {
-  const def = METRIC_DEFS[key];
-  if (!def || value === null || value === undefined) return null;
-  const deviation = def.useAbsolute ? Math.abs(value - (def.ideal || 0)) : value;
-  for (let i = 0; i < def.thresholds.length; i++) {
-    if (deviation <= def.thresholds[i]) return i;
-  }
-  return 4;
-}
 
 // ── State ──
 let poseLandmarker = null;
@@ -1176,7 +1050,7 @@ async function initMediaPipe() {
 // ── Navigation ──
 function navigateTo(screen) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  const map = { loading: 'screenLoading', mode: 'screenMode', settings: 'screenSettings', measure: 'screenMeasure', results: 'screenResults' };
+  const map = { loading: 'screenLoading', mode: 'screenMode', settings: 'screenSettings', measure: 'screenMeasure', export: 'screenExport' };
   $(map[screen]).classList.add('active');
 }
 
@@ -1365,101 +1239,29 @@ function finishMeasurement() {
   isDetecting = false;
   if (stream) stream.getTracks().forEach(t => t.stop());
   stream = null;
-  showResultsScreen();
+  showExportScreen();
 }
 
-// ── Results Screen ──
-function showResultsScreen() {
-  // Calculate metric averages
-  const frontAvgs = {};
-  for (const key of FRONT_METRIC_KEYS) {
-    const values = frontFrames.map(f => f.metrics[key]).filter(v => v !== null && v !== undefined);
-    if (values.length > 0) {
-      frontAvgs[key] = +(values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
-    }
+// ── Export Screen ──
+function showExportScreen() {
+  const totalFrames = frontFrames.length + sideFrames.length;
+  const metricCount = appMode === 'thorough'
+    ? FRONT_METRIC_KEYS.length + SIDE_METRIC_KEYS.length
+    : FRONT_METRIC_KEYS.length;
+
+  let avgFps = 0;
+  if (frontFrames.length >= 2) {
+    const duration = (frontFrames[frontFrames.length - 1].timestamp - frontFrames[0].timestamp) / 1000;
+    avgFps = duration > 0 ? Math.round(frontFrames.length / duration) : 0;
   }
 
-  const sideAvgs = {};
-  if (appMode === 'thorough') {
-    for (const key of SIDE_METRIC_KEYS) {
-      const values = sideFrames.map(f => f.metrics[key]).filter(v => v !== null && v !== undefined);
-      if (values.length > 0) {
-        sideAvgs[key] = +(values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
-      }
-    }
-  }
-
-  // Calculate total score
-  const allMetrics = { ...frontAvgs, ...sideAvgs };
-  let totalScore = 0;
-  let metricCount = 0;
-  for (const [key, value] of Object.entries(allMetrics)) {
-    const rating = rateMetric(key, value);
-    if (rating !== null) {
-      totalScore += RATING_SCORES[rating];
-      metricCount++;
-    }
-  }
-  const finalScore = metricCount > 0 ? Math.round(totalScore / metricCount) : 0;
-
-  // Update score display
-  const scoreColor = finalScore >= 80 ? 'var(--green)' : finalScore >= 60 ? 'var(--orange)' : 'var(--red)';
-  $('resultIcon').style.background = scoreColor;
-  $('scoreText').textContent = finalScore;
-  $('scoreText').style.color = scoreColor;
-  const arc = $('scoreArc');
-  arc.style.stroke = scoreColor;
-  const circumference = 326.7;
-  arc.style.strokeDashoffset = circumference - (circumference * finalScore / 100);
-
-  $('resultSummaryText').textContent =
+  $('exportSummaryText').textContent =
     (appMode === 'simple' ? '簡易モード' : 'しっかりモード') + `・${MEASURE_DURATION}秒間`;
+  $('statFrames').textContent = totalFrames;
+  $('statMetrics').textContent = metricCount;
+  $('statFps').textContent = avgFps;
 
-  // Build metric cards
-  const container = $('resultsContent');
-  container.innerHTML = '';
-
-  function addSection(title) {
-    const h = document.createElement('div');
-    h.className = 'section-title';
-    h.textContent = title;
-    container.appendChild(h);
-  }
-
-  function addMetricCard(key, value) {
-    const def = METRIC_DEFS[key];
-    if (!def || value === null || value === undefined) return;
-    const rating = rateMetric(key, value);
-    if (rating === null) return;
-
-    const card = document.createElement('div');
-    card.className = 'metric-card';
-    card.innerHTML = `
-      <div class="metric-icon" style="background: ${['#E8F5E9','#FFF8E1','#FFF3E0','#FFEBEE','#F3E5F5'][rating]};">
-        ${def.icon}
-      </div>
-      <div class="metric-info">
-        <div class="metric-name">${def.name}</div>
-        <div class="metric-value">${value}${def.unit} (${def.description})</div>
-      </div>
-      <span class="metric-rating ${RATING_CLASSES[rating]}">${RATING_LABELS[rating]}</span>
-    `;
-    container.appendChild(card);
-  }
-
-  addSection('正面（前額面）');
-  for (const key of FRONT_METRIC_KEYS) {
-    addMetricCard(key, frontAvgs[key]);
-  }
-
-  if (appMode === 'thorough') {
-    addSection('側面（矢状面）');
-    for (const key of SIDE_METRIC_KEYS) {
-      addMetricCard(key, sideAvgs[key]);
-    }
-  }
-
-  navigateTo('results');
+  navigateTo('export');
 }
 
 // ── TXT Generation ──
@@ -1489,8 +1291,7 @@ function generateTxt(detailed) {
     const values = frontFrames.map(f => f.metrics[key]).filter(v => v !== null && v !== undefined);
     if (values.length === 0) continue;
     const s = calcStats(values);
-    const rating = rateMetric(key, s.avg);
-    txt += `${key}: avg=${s.avg} sd=${s.sd} min=${s.min} max=${s.max} rating=${rating !== null ? RATING_LABELS[rating] : 'N/A'}\n`;
+    txt += `${key}: avg=${s.avg} sd=${s.sd} min=${s.min} max=${s.max}\n`;
   }
   txt += '\n';
 
@@ -1500,8 +1301,7 @@ function generateTxt(detailed) {
       const values = sideFrames.map(f => f.metrics[key]).filter(v => v !== null && v !== undefined);
       if (values.length === 0) continue;
       const s = calcStats(values);
-      const rating = rateMetric(key, s.avg);
-      txt += `${key}: avg=${s.avg} sd=${s.sd} min=${s.min} max=${s.max} rating=${rating !== null ? RATING_LABELS[rating] : 'N/A'}\n`;
+      txt += `${key}: avg=${s.avg} sd=${s.sd} min=${s.min} max=${s.max}\n`;
     }
     txt += '\n';
   }
