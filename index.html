@@ -606,7 +606,8 @@ const MODEL_LITE = 'https://storage.googleapis.com/mediapipe-models/pose_landmar
 const EMA_ALPHA = 0.3;
 const MEASURE_DURATION = 15;
 const COUNTDOWN_DURATION = 5;
-const VISIBILITY_THRESHOLD = 0.3;
+const VISIBILITY_THRESHOLD = 0.3;      // 描画・リアルタイム計算用
+const CONFIDENCE_THRESHOLD = 0.75;     // サマリー計算時のフレーム除外閾値
 
 // Landmark indices (MediaPipe Pose 33-point model)
 const LM = {
@@ -783,11 +784,16 @@ function calcSideMetrics(lm) {
     m.cva = rad2deg(Math.atan2(dy, dx));
   }
 
-  // S2: Forward Shoulder Angle — shoulder offset from hip in sagittal plane
+  // S2: Forward Shoulder Angle (FSA)
+  // 学術定義: C7（≒肩）と肩峰を結ぶ線が垂直線となす角度
+  // 正常: 0°に近い（肩が股関節の真上）、>15°で巻き肩傾向
+  // 修正: atan2(水平偏位, 垂直距離) で「垂直からの偏位角」を算出
   if (shVis && hipVis) {
-    const dx = sh.x - hip.x;
-    const dy = hip.y - sh.y;
-    m.forward_shoulder_angle = rad2deg(Math.atan2(Math.abs(dx), dy));
+    const dx = sh.x - hip.x; // 肩が股関節より前方なら正
+    const dy = hip.y - sh.y; // 垂直距離（常に正）
+    if (dy > 0.01) {
+      m.forward_shoulder_angle = rad2deg(Math.atan2(dx, dy));
+    }
   }
 
   // S3: Thoracic kyphosis estimate — shoulder-to-hip angle in sagittal plane
@@ -847,7 +853,53 @@ function calcStats(values) {
   const sd = Math.sqrt(filtered.reduce((s, v) => s + (v - avg) ** 2, 0) / n);
   const min = Math.min(...filtered);
   const max = Math.max(...filtered);
-  return { avg: +avg.toFixed(1), sd: +sd.toFixed(1), min: +min.toFixed(1), max: +max.toFixed(1) };
+  return { avg: +avg.toFixed(1), sd: +sd.toFixed(1), min: +min.toFixed(1), max: +max.toFixed(1), n };
+}
+
+// 高信頼度フレームのみでサマリー計算（visibility >= CONFIDENCE_THRESHOLD のフレームだけ使用）
+function calcStatsFiltered(frames, metricKey) {
+  const values = frames
+    .filter(f => f.avgConfidence >= CONFIDENCE_THRESHOLD)
+    .map(f => f.metrics[metricKey])
+    .filter(v => v !== null && v !== undefined);
+  return calcStats(values);
+}
+
+// 呼吸数推定（肩Y座標のゼロクロッシング法）
+function estimateRespirationRate(frames) {
+  // 肩のY座標を高信頼度フレームから抽出
+  const shIdx = TRACKED_NAMES.indexOf('l_shoulder');
+  if (shIdx < 0 || frames.length < 30) return null; // 最低30フレーム必要
+
+  const yValues = [];
+  const timestamps = [];
+  for (const f of frames) {
+    const vis = f.landmarks[shIdx]?.visibility || 0;
+    if (vis >= CONFIDENCE_THRESHOLD) {
+      yValues.push(f.landmarks[shIdx].y);
+      timestamps.push(f.timestamp);
+    }
+  }
+  if (yValues.length < 30) return null;
+
+  // 平均を引いて中心化
+  const mean = yValues.reduce((a, b) => a + b, 0) / yValues.length;
+  const centered = yValues.map(v => v - mean);
+
+  // ゼロクロッシング（下→上の交差をカウント）
+  let crossings = 0;
+  for (let i = 1; i < centered.length; i++) {
+    if (centered[i - 1] < 0 && centered[i] >= 0) crossings++;
+  }
+
+  const durationSec = (timestamps[timestamps.length - 1] - timestamps[0]) / 1000;
+  if (durationSec < 3) return null;
+
+  // 1クロッシング = 1呼吸サイクル → BPM換算
+  const bpm = (crossings / durationSec) * 60;
+  // 妥当な範囲（8-30 BPM）のみ返す
+  if (bpm >= 8 && bpm <= 30) return +bpm.toFixed(1);
+  return null;
 }
 
 // ── Drawing ──
@@ -931,8 +983,13 @@ function processFrame(rawLm, timestamp) {
     const isSide = measurePhase === 'side-measuring';
     const metrics = isSide ? calcSideMetrics(lm) : calcFrontMetrics(lm);
 
+    // フレーム全体の平均信頼度を記録（サマリー計算時のフィルタリングに使用）
+    const visibilities = TRACKED_INDICES.map(idx => lm[idx]?.visibility || 0);
+    const avgConfidence = visibilities.reduce((a, b) => a + b, 0) / visibilities.length;
+
     const frameData = {
       timestamp,
+      avgConfidence: +avgConfidence.toFixed(3),
       landmarks: TRACKED_INDICES.map(idx => ({
         x: +(lm[idx].x).toFixed(5),
         y: +(lm[idx].y).toFixed(5),
@@ -1273,7 +1330,7 @@ function generateTxt(detailed) {
 
   txt += '[header]\n';
   txt += `app: 姿勢スキャン\n`;
-  txt += `version: 1.0\n`;
+  txt += `version: 1.1\n`;
   txt += `date: ${dateStr}\n`;
   txt += `mode: ${appMode}\n`;
   txt += `duration_sec: ${MEASURE_DURATION}\n`;
@@ -1286,23 +1343,41 @@ function generateTxt(detailed) {
   }
   txt += '\n';
 
+  // 高信頼度フレーム数の集計
+  const frontHighConf = frontFrames.filter(f => f.avgConfidence >= CONFIDENCE_THRESHOLD).length;
+  txt += `front_high_confidence_frames: ${frontHighConf}/${frontFrames.length} (threshold=${CONFIDENCE_THRESHOLD})\n`;
+  if (appMode === 'thorough' && sideFrames.length > 0) {
+    const sideHighConf = sideFrames.filter(f => f.avgConfidence >= CONFIDENCE_THRESHOLD).length;
+    txt += `side_high_confidence_frames: ${sideHighConf}/${sideFrames.length} (threshold=${CONFIDENCE_THRESHOLD})\n`;
+  }
+  txt += '\n';
+
   txt += '[front_metrics_summary]\n';
+  txt += '# 注: visibility >= 0.75 のフレームのみで算出\n';
   for (const key of FRONT_METRIC_KEYS) {
-    const values = frontFrames.map(f => f.metrics[key]).filter(v => v !== null && v !== undefined);
-    if (values.length === 0) continue;
-    const s = calcStats(values);
-    txt += `${key}: avg=${s.avg} sd=${s.sd} min=${s.min} max=${s.max}\n`;
+    const s = calcStatsFiltered(frontFrames, key);
+    if (!s) continue;
+    txt += `${key}: avg=${s.avg} sd=${s.sd} min=${s.min} max=${s.max} n=${s.n}\n`;
   }
   txt += '\n';
 
   if (appMode === 'thorough' && sideFrames.length > 0) {
     txt += '[side_metrics_summary]\n';
+    txt += '# 注: visibility >= 0.75 のフレームのみで算出\n';
     for (const key of SIDE_METRIC_KEYS) {
-      const values = sideFrames.map(f => f.metrics[key]).filter(v => v !== null && v !== undefined);
-      if (values.length === 0) continue;
-      const s = calcStats(values);
-      txt += `${key}: avg=${s.avg} sd=${s.sd} min=${s.min} max=${s.max}\n`;
+      const s = calcStatsFiltered(sideFrames, key);
+      if (!s) continue;
+      txt += `${key}: avg=${s.avg} sd=${s.sd} min=${s.min} max=${s.max} n=${s.n}\n`;
     }
+    txt += '\n';
+  }
+
+  // 呼吸数推定
+  const respRate = estimateRespirationRate(frontFrames);
+  if (respRate !== null) {
+    txt += '[respiration_estimate]\n';
+    txt += `estimated_respiration_rate: ${respRate} BPM\n`;
+    txt += `method: shoulder_y_zero_crossing\n`;
     txt += '\n';
   }
 
@@ -1457,18 +1532,24 @@ function setupEventHandlers() {
 
 // ── Analysis Hints ──
 const ANALYSIS_HINTS = `[analysis_hints]
-- SD値が低すぎる指標は「硬い・緊張している」サインの可能性がある
-- 個人差が大きいため、絶対値より個人のベースラインからのズレで判断すべき
-- 前半と後半のフレームデータを比較すると、15秒間の姿勢ドリフト（疲労・緊張）を検出できる
-- 肩のy座標の周期的振動から呼吸パターン（深さ・頻度）を推定できる可能性がある
+# 計測上の制約（必ず考慮すること）
+- カメラの2D推定による絶対値（度数）には誤差が含まれるため、絶対的な数値の評価よりも、左右差や時間経過による変化（ドリフト）を重視して分析すること
+- 衣服の上からの推定であり、骨格の正確な位置ではない。特に骨盤前傾角・胸椎後弯角は実際の骨格角度と乖離する可能性がある
+- SD値の変動は姿勢の揺らぎを示すが、姿勢推定APIのスムージング処理の影響も含まれるため、SD値のみで筋緊張を断定してはならない
+- サマリーはvisibility >= 0.75のフレームのみで計算済み。低信頼度のノイズデータは除外されている
+- 側面撮影時、カメラから遠い側の半身（例: 左向き撮影時の右半身）はAPIの推測補完であり精度が低い
+
+# 指標の解釈ガイドライン
 - CVA（頭蓋椎骨角）: >53度が正常、45〜53度が軽〜中等度、<45度が重度の前方頭位
-- FSA（前方肩角度）: 54度以下で巻き肩（Rounded Shoulders）と判定
-- 胸椎後弯: 正常範囲は20〜40度（Cobb角）、40度超で過後弯
+- FSA（前方肩角度）: 垂直軸からの偏位角。0度が理想、>15度で巻き肩傾向
+- 胸椎後弯: 正常範囲は20〜40度（Cobb角基準）、40度超で過後弯
 - 骨盤前傾: 正常な前傾は7〜13度。過度な前傾は腰痛リスク
 - 膝外反角: 正常は5〜7度。過度な外反（X脚）は膝関節への負担増
 - プラムライン: 理想的には耳→肩→股関節→膝→くるぶしが垂直一線上
+- 前半と後半のフレームデータを比較すると、15秒間の姿勢ドリフト（疲労・緊張）を検出できる
 - 指標間の相関（例: 頭部前方変位↔巻き肩）は代償運動パターンを示唆する
 - 膝アライメントと骨盤傾斜の相関が高い場合、下肢の構造的問題を示唆
+- estimated_respiration_rateが含まれる場合、肩のY座標振動から推定した呼吸数（BPM）。正常な安静時は12〜20 BPM
 `;
 
 // ── References ──
