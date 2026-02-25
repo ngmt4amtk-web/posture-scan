@@ -1,0 +1,1701 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>姿勢スキャン — 姿勢チェック＆データ出力</title>
+<style>
+/* ── CSS Variables ── */
+:root {
+  --primary: #007AFF;
+  --primary-dark: #0056CC;
+  --bg: #F2F2F7;
+  --card-bg: #FFFFFF;
+  --text: #000000;
+  --text-secondary: #3C3C43;
+  --text-tertiary: #8E8E93;
+  --separator: #C6C6C8;
+  --green: #34C759;
+  --orange: #FF9500;
+  --red: #FF3B30;
+  --yellow: #FFCC00;
+  --cyan: #32ADE6;
+  --overlay-skeleton: rgba(50, 173, 230, 0.7);
+  --overlay-point: rgba(255, 255, 255, 0.9);
+}
+
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%; width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  overflow: hidden;
+}
+
+/* ── Screen System ── */
+.screen { display: none; flex-direction: column; height: 100%; width: 100%; position: absolute; top: 0; left: 0; }
+.screen.active { display: flex; }
+
+/* ── Common Components ── */
+.card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  overflow: hidden;
+}
+.card-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 17px;
+}
+.card-body { padding: 16px; }
+
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 16px; border: none; border-radius: 12px;
+  font-size: 17px; font-weight: 600; cursor: pointer;
+  transition: transform 0.1s, opacity 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:active { transform: scale(0.98); opacity: 0.9; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:disabled { background: #B0B0B0; cursor: not-allowed; }
+.btn-secondary { background: #E5E5EA; color: var(--text); }
+.btn-outline { background: transparent; color: var(--primary); border: 1.5px solid var(--primary); }
+
+.badge {
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 99px;
+}
+.badge-blue { background: #E8F0FE; color: var(--primary); }
+
+/* ── Screen 1: Mode Selection ── */
+#screenMode {
+  padding: 0 20px;
+  justify-content: center;
+  gap: 16px;
+}
+#screenMode .title-area {
+  text-align: center;
+  padding: 40px 0 20px;
+}
+#screenMode h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+#screenMode .subtitle { color: var(--text-tertiary); font-size: 15px; margin-top: 8px; line-height: 1.5; }
+
+.mode-card {
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex; align-items: center; gap: 20px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  -webkit-tap-highlight-color: transparent;
+}
+.mode-card:active { border-color: var(--primary); box-shadow: 0 2px 12px rgba(0,122,255,0.15); }
+.mode-card .icon-area {
+  width: 64px; height: 64px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.mode-card .icon-area svg { width: 56px; height: 56px; }
+.mode-card .info h3 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+.mode-card .info p { font-size: 13px; color: var(--text-tertiary); line-height: 1.4; }
+.mode-card .info .mode-badge {
+  display: inline-block; margin-top: 8px;
+  font-size: 12px; font-weight: 500; padding: 3px 10px;
+  border-radius: 99px;
+}
+.mode-card .info .mode-badge.simple { background: #E8F5E9; color: #2E7D32; }
+.mode-card .info .mode-badge.thorough { background: #E3F2FD; color: #1565C0; }
+
+/* ── Screen 2: Settings ── */
+#screenSettings {
+  padding: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.settings-header {
+  padding: 56px 24px 16px;
+}
+.settings-header h1 { font-size: 28px; font-weight: 700; }
+.settings-header p { color: var(--text-tertiary); font-size: 15px; margin-top: 6px; }
+
+.settings-content { padding: 0 16px 120px; display: flex; flex-direction: column; gap: 16px; }
+
+/* Wheel Picker */
+.wheel-picker-container {
+  position: relative;
+  height: 200px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom,
+    transparent 0%, rgba(0,0,0,0.3) 15%, black 35%, black 65%, rgba(0,0,0,0.3) 85%, transparent 100%);
+  mask-image: linear-gradient(to bottom,
+    transparent 0%, rgba(0,0,0,0.3) 15%, black 35%, black 65%, rgba(0,0,0,0.3) 85%, transparent 100%);
+}
+.wheel-picker-highlight {
+  position: absolute;
+  top: 50%; left: 0; right: 0;
+  height: 40px; transform: translateY(-50%);
+  background: rgba(0,122,255,0.06);
+  border-top: 1px solid var(--separator);
+  border-bottom: 1px solid var(--separator);
+  pointer-events: none;
+  z-index: 1;
+}
+.wheel-picker-list {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  will-change: transform;
+  transition: transform 0.1s ease-out;
+}
+.wheel-picker-item {
+  height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 400;
+  color: var(--text);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.wheel-picker-item.selected { font-weight: 600; color: var(--primary); }
+.wheel-picker-unit {
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-tertiary);
+  margin-top: 8px;
+}
+
+/* Segment Control */
+.segment-control {
+  display: flex;
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 2px;
+  position: relative;
+}
+.segment-control .slider {
+  position: absolute;
+  top: 2px; bottom: 2px;
+  width: calc(50% - 2px);
+  background: var(--card-bg);
+  border-radius: 7px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  transition: left 0.25s ease;
+  left: 2px;
+}
+.segment-control.right .slider { left: calc(50%); }
+.segment-control button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  opacity: 0.6;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+  transition: opacity 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.segment-control button.active { opacity: 1; color: var(--text); }
+
+.side-description {
+  margin-top: 12px;
+  padding: 12px;
+  background: #F8F8FA;
+  border-radius: 8px;
+  display: flex; align-items: flex-start; gap: 10px;
+}
+.side-description .info-icon { color: var(--text-tertiary); font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.side-description p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+
+.settings-bottom {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  padding: 16px 20px 32px;
+  background: linear-gradient(transparent, var(--bg) 20%);
+  z-index: 10;
+}
+
+/* ── Screen 3: Measurement ── */
+#screenMeasure {
+  background: #000;
+  position: relative;
+}
+.camera-container {
+  flex: 1; position: relative; overflow: hidden;
+}
+.camera-container video {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.camera-container video.mirror { transform: scaleX(-1); }
+.camera-container canvas {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+.camera-container canvas.mirror { transform: scaleX(-1); }
+
+.measure-overlay {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.countdown-number {
+  font-size: 120px;
+  font-weight: 800;
+  color: rgba(255,255,255,0.9);
+  text-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.countdown-number.visible { opacity: 1; }
+
+.countdown-label {
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.7);
+  margin-top: 12px;
+}
+
+.measure-progress {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: 4px; background: rgba(255,255,255,0.2);
+}
+.measure-progress-bar {
+  height: 100%; background: var(--primary);
+  width: 0; transition: width 0.1s linear;
+}
+
+.measure-status {
+  position: absolute; top: 0; left: 0; right: 0;
+  padding: 52px 16px 12px;
+  background: linear-gradient(rgba(0,0,0,0.5), transparent);
+  display: flex; align-items: center; justify-content: space-between;
+  z-index: 11;
+}
+.measure-status .status-left { display: flex; align-items: center; gap: 8px; }
+.measure-status .status-badge {
+  font-size: 12px; font-weight: 600; color: #fff;
+  padding: 4px 10px; border-radius: 99px;
+}
+.measure-status .status-badge.loading { background: var(--orange); }
+.measure-status .status-badge.ready { background: var(--green); }
+.measure-status .status-badge.recording { background: var(--red); animation: pulse 1s infinite; }
+.measure-status .fps-badge {
+  font-size: 11px; color: rgba(255,255,255,0.7);
+  padding: 2px 6px; background: rgba(0,0,0,0.4); border-radius: 4px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.landmark-count {
+  font-size: 13px; color: rgba(255,255,255,0.8);
+}
+
+.measure-bottom-controls {
+  position: absolute; bottom: 24px; left: 0; right: 0;
+  display: flex; justify-content: center; gap: 16px;
+  z-index: 11;
+  pointer-events: auto;
+}
+.measure-bottom-controls .btn {
+  width: auto; padding: 12px 32px;
+  border-radius: 99px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+/* Side switch screen */
+.side-switch-overlay {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.85);
+  display: none; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 20; gap: 24px; padding: 40px;
+}
+.side-switch-overlay.visible { display: flex; }
+.side-switch-overlay h2 { color: #fff; font-size: 24px; text-align: center; }
+.side-switch-overlay p { color: rgba(255,255,255,0.7); font-size: 15px; text-align: center; line-height: 1.6; }
+.side-switch-overlay .btn { width: auto; padding: 14px 40px; }
+
+/* Camera toggle */
+.camera-toggle-btn {
+  position: absolute; top: 52px; right: 16px;
+  width: 40px; height: 40px;
+  background: rgba(0,0,0,0.4); border: none; border-radius: 50%;
+  color: #fff; font-size: 20px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 11;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Screen 4: Results ── */
+#screenResults {
+  padding: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.results-header {
+  text-align: center;
+  padding: 56px 20px 16px;
+}
+.results-header .check-icon {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 16px;
+}
+.results-header .check-icon svg { width: 32px; height: 32px; fill: #fff; }
+.results-header h1 { font-size: 24px; font-weight: 700; }
+.results-header p { font-size: 14px; color: var(--text-tertiary); margin-top: 6px; }
+
+/* Score circle */
+.score-circle-container {
+  display: flex; justify-content: center; padding: 8px 0 16px;
+}
+.score-circle {
+  width: 120px; height: 120px; position: relative;
+}
+.score-circle svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.score-circle .bg { fill: none; stroke: #E5E5EA; stroke-width: 8; }
+.score-circle .fg { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
+.score-circle .score-text {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  font-size: 32px; font-weight: 800;
+}
+.score-circle .score-label {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, calc(-50% + 22px));
+  font-size: 11px; color: var(--text-tertiary); font-weight: 500;
+}
+
+/* Metric cards */
+.results-content { padding: 0 16px 120px; display: flex; flex-direction: column; gap: 12px; }
+.metric-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.metric-card .metric-icon {
+  width: 36px; height: 36px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+.metric-card .metric-info { flex: 1; min-width: 0; }
+.metric-card .metric-name { font-size: 14px; font-weight: 600; }
+.metric-card .metric-value { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+.metric-card .metric-rating {
+  font-size: 12px; font-weight: 600; padding: 4px 10px;
+  border-radius: 99px; white-space: nowrap;
+}
+.rating-good { background: #E8F5E9; color: #2E7D32; }
+.rating-mild { background: #FFF8E1; color: #F57F17; }
+.rating-moderate { background: #FFF3E0; color: #E65100; }
+.rating-poor { background: #FFEBEE; color: #C62828; }
+.rating-severe { background: #F3E5F5; color: #7B1FA2; }
+
+.section-title {
+  font-size: 13px; font-weight: 600; color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 8px 0 0;
+}
+
+.results-bottom {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  padding: 12px 20px 32px;
+  background: linear-gradient(transparent, var(--bg) 20%);
+  z-index: 10;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.results-bottom .btn-row { display: flex; gap: 8px; }
+.results-bottom .btn-row .btn { font-size: 14px; padding: 12px; }
+
+/* ── Loading Screen ── */
+#screenLoading {
+  background: var(--bg);
+  align-items: center; justify-content: center; gap: 16px;
+}
+#screenLoading .spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--separator);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#screenLoading .loading-text { font-size: 15px; color: var(--text-secondary); text-align: center; }
+
+/* ── Utility ── */
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ============ Screen: Loading ============ -->
+<div class="screen active" id="screenLoading">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">MediaPipe を読み込み中...</div>
+</div>
+
+<!-- ============ Screen 1: Mode Selection ============ -->
+<div class="screen" id="screenMode">
+  <div class="title-area">
+    <h1>姿勢スキャン</h1>
+    <p class="subtitle">カメラで姿勢を計測して<br>データをtxtで出力します</p>
+  </div>
+
+  <div class="mode-card" id="btnSimple">
+    <div class="icon-area">
+      <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" color="#007AFF">
+        <circle cx="32" cy="14" r="6"/>
+        <line x1="32" y1="20" x2="32" y2="42"/>
+        <line x1="20" y1="30" x2="44" y2="30"/>
+        <line x1="32" y1="42" x2="22" y2="58"/>
+        <line x1="32" y1="42" x2="42" y2="58"/>
+      </svg>
+    </div>
+    <div class="info">
+      <h3>簡易</h3>
+      <p>正面のみ・15秒<br>サクッとチェックしたいとき</p>
+      <span class="mode-badge simple">Quick</span>
+    </div>
+  </div>
+
+  <div class="mode-card" id="btnThorough">
+    <div class="icon-area">
+      <svg viewBox="0 0 80 64" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" color="#007AFF">
+        <circle cx="24" cy="14" r="6"/>
+        <line x1="24" y1="20" x2="24" y2="42"/>
+        <line x1="12" y1="30" x2="36" y2="30"/>
+        <line x1="24" y1="42" x2="14" y2="58"/>
+        <line x1="24" y1="42" x2="34" y2="58"/>
+        <circle cx="58" cy="14" r="6"/>
+        <line x1="58" y1="20" x2="58" y2="42"/>
+        <line x1="52" y1="28" x2="64" y2="32"/>
+        <line x1="58" y1="42" x2="48" y2="58"/>
+        <line x1="58" y1="42" x2="68" y2="58"/>
+        <text x="41" y="40" font-size="16" fill="#007AFF" stroke="none" font-weight="600">+</text>
+      </svg>
+    </div>
+    <div class="info">
+      <h3>しっかり</h3>
+      <p>正面＋側面・30秒<br>詳しく分析したいとき</p>
+      <span class="mode-badge thorough">Thorough</span>
+    </div>
+  </div>
+
+  <p style="text-align:center; font-size:12px; color:var(--text-tertiary); padding: 8px 0 24px;">
+    計測データをAIに渡して姿勢の相談ができます
+  </p>
+</div>
+
+<!-- ============ Screen 2: Settings ============ -->
+<div class="screen" id="screenSettings">
+  <div class="settings-header">
+    <h1>設定</h1>
+    <p>計測の準備をします</p>
+  </div>
+
+  <div class="settings-content">
+    <!-- Height Picker -->
+    <div class="card">
+      <div class="card-header">
+        <span style="font-size:20px;">📏</span>
+        <span>身長</span>
+      </div>
+      <div class="card-body">
+        <div class="wheel-picker-container" id="heightPicker">
+          <div class="wheel-picker-highlight"></div>
+          <div class="wheel-picker-list" id="heightPickerList"></div>
+        </div>
+        <div class="wheel-picker-unit">cm</div>
+      </div>
+    </div>
+
+    <!-- Side Selection (thorough only) -->
+    <div class="card" id="sideSelectionCard" style="display:none;">
+      <div class="card-header">
+        <span style="font-size:20px;">📐</span>
+        <span>側面撮影の向き</span>
+        <span class="badge badge-blue" style="margin-left:auto;">しっかりモード</span>
+      </div>
+      <div class="card-body">
+        <p style="font-size:14px; color:var(--text-secondary); margin-bottom:12px;">
+          側面撮影時にどちら側を撮影しますか？
+        </p>
+        <div class="segment-control" id="sideSegment">
+          <div class="slider"></div>
+          <button class="active" id="btnSideLeft">左側面</button>
+          <button id="btnSideRight">右側面</button>
+        </div>
+        <div class="side-description" id="sideDescription">
+          <span class="info-icon">ℹ️</span>
+          <p id="sideDescText">左側面から撮影します。壁やドアの前など、背景がシンプルな場所がおすすめです</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-bottom">
+    <button class="btn btn-primary" id="btnStartMeasure">計測開始</button>
+  </div>
+</div>
+
+<!-- ============ Screen 3: Measurement ============ -->
+<div class="screen" id="screenMeasure">
+  <div class="camera-container">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div class="measure-status">
+    <div class="status-left">
+      <span class="status-badge loading" id="statusBadge">準備中</span>
+      <span class="fps-badge" id="fpsBadge">-- FPS</span>
+    </div>
+    <span class="landmark-count" id="landmarkCount">--/17</span>
+  </div>
+
+  <button class="camera-toggle-btn" id="btnCameraToggle">🔄</button>
+
+  <div class="measure-overlay" id="measureOverlay">
+    <div class="countdown-number" id="countdownNumber"></div>
+    <div class="countdown-label" id="countdownLabel"></div>
+  </div>
+
+  <div class="measure-progress" id="measureProgress" style="display:none;">
+    <div class="measure-progress-bar" id="measureProgressBar"></div>
+  </div>
+
+  <div class="measure-bottom-controls" id="measureControls">
+    <button class="btn btn-primary" id="btnBeginMeasure" disabled>計測開始</button>
+  </div>
+
+  <!-- Side switch overlay -->
+  <div class="side-switch-overlay" id="sideSwitchOverlay">
+    <h2>側面撮影に切り替え</h2>
+    <p id="sideSwitchText">カメラを横に移動して、左側面が映るようにしてください</p>
+    <button class="btn btn-primary" id="btnSideReady">準備できた</button>
+  </div>
+</div>
+
+<!-- ============ Screen 4: Results ============ -->
+<div class="screen" id="screenResults">
+  <div class="results-header">
+    <div class="check-icon" id="resultIcon">
+      <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+    </div>
+    <h1>姿勢スコア</h1>
+    <p id="resultSummaryText">簡易モード・15秒間</p>
+  </div>
+
+  <!-- Score circle -->
+  <div class="score-circle-container">
+    <div class="score-circle">
+      <svg viewBox="0 0 120 120">
+        <circle class="bg" cx="60" cy="60" r="52"/>
+        <circle class="fg" id="scoreArc" cx="60" cy="60" r="52"
+          stroke-dasharray="326.7" stroke-dashoffset="326.7"/>
+      </svg>
+      <div class="score-text" id="scoreText">--</div>
+      <div class="score-label">/ 100</div>
+    </div>
+  </div>
+
+  <div class="results-content" id="resultsContent">
+    <!-- Dynamic metric cards inserted here -->
+  </div>
+
+  <div class="results-bottom">
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnExportSimple" style="flex:1;">📄 簡易txt</button>
+      <button class="btn btn-outline" id="btnExportDetail" style="flex:1;">📊 詳細txt</button>
+    </div>
+    <button class="btn btn-secondary" id="btnRetry">もう一度計測する</button>
+  </div>
+</div>
+
+<script type="module">
+// ══════════════════════════════════════════════════
+//  姿勢スキャン — Main Application Script
+// ══════════════════════════════════════════════════
+
+import {
+  PoseLandmarker,
+  FilesetResolver,
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs";
+
+// ── Constants ──
+const VISION_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm';
+const MODEL_FULL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task';
+const MODEL_LITE = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task';
+
+const EMA_ALPHA = 0.3;
+const MEASURE_DURATION = 15;
+const COUNTDOWN_DURATION = 5;
+const VISIBILITY_THRESHOLD = 0.3;
+
+// Landmark indices (MediaPipe Pose 33-point model)
+const LM = {
+  NOSE: 0, L_EAR: 7, R_EAR: 8,
+  L_SHOULDER: 11, R_SHOULDER: 12,
+  L_ELBOW: 13, R_ELBOW: 14,
+  L_WRIST: 15, R_WRIST: 16,
+  L_HIP: 23, R_HIP: 24,
+  L_KNEE: 25, R_KNEE: 26,
+  L_ANKLE: 27, R_ANKLE: 28,
+};
+const TRACKED_INDICES = [0, 7, 8, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+const TRACKED_NAMES = ['nose','l_ear','r_ear','l_shoulder','r_shoulder','l_elbow','r_elbow','l_wrist','r_wrist','l_hip','r_hip','l_knee','r_knee','l_ankle','r_ankle'];
+
+// Skeleton connections
+const SKELETON_CONNECTIONS = [
+  [LM.L_EAR, LM.NOSE], [LM.R_EAR, LM.NOSE],
+  [LM.L_SHOULDER, LM.R_SHOULDER],
+  [LM.L_SHOULDER, LM.L_ELBOW], [LM.L_ELBOW, LM.L_WRIST],
+  [LM.R_SHOULDER, LM.R_ELBOW], [LM.R_ELBOW, LM.R_WRIST],
+  [LM.L_SHOULDER, LM.L_HIP], [LM.R_SHOULDER, LM.R_HIP],
+  [LM.L_HIP, LM.R_HIP],
+  [LM.L_HIP, LM.L_KNEE], [LM.L_KNEE, LM.L_ANKLE],
+  [LM.R_HIP, LM.R_KNEE], [LM.R_KNEE, LM.R_ANKLE],
+];
+
+// Front metric keys
+const FRONT_METRIC_KEYS = [
+  'head_lateral_tilt','shoulder_asymmetry','trunk_lateral_shift',
+  'pelvic_tilt','knee_valgus_angle'
+];
+// Side metric keys
+const SIDE_METRIC_KEYS = [
+  'cva','forward_shoulder_angle','thoracic_kyphosis',
+  'pelvic_anterior_tilt','plumb_line_deviation'
+];
+
+// ── Metric Definitions (for display & scoring) ──
+const METRIC_DEFS = {
+  // Front metrics
+  head_lateral_tilt: {
+    name: '頭部横傾斜', icon: '🧠', unit: '°',
+    ideal: 0, thresholds: [3, 6, 10, 15], // |value| boundaries: good/mild/moderate/poor/severe
+    description: '頭が左右に傾いている角度（0°が理想）',
+    useAbsolute: true,
+  },
+  shoulder_asymmetry: {
+    name: '肩の左右差', icon: '💪', unit: '°',
+    ideal: 0, thresholds: [2, 5, 8, 12],
+    description: '左右の肩の高さの差（0°が理想）',
+    useAbsolute: true,
+  },
+  trunk_lateral_shift: {
+    name: '体幹側方偏位', icon: '🏛️', unit: '°',
+    ideal: 0, thresholds: [2, 4, 7, 10],
+    description: '体幹が左右にずれている角度（0°が理想）',
+    useAbsolute: true,
+  },
+  pelvic_tilt: {
+    name: '骨盤左右傾斜', icon: '🦴', unit: '°',
+    ideal: 0, thresholds: [2, 4, 7, 10],
+    description: '骨盤が左右に傾いている角度（0°が理想）',
+    useAbsolute: true,
+  },
+  knee_valgus_angle: {
+    name: '膝アライメント', icon: '🦵', unit: '°',
+    ideal: 6, thresholds: [3, 5, 8, 12], // deviation from ideal
+    description: '膝の外反角度（正常: 5〜7°）',
+    useAbsolute: true,
+  },
+  // Side metrics
+  cva: {
+    name: '頭部前方変位 (CVA)', icon: '👤', unit: '°',
+    ideal: 55, thresholds: [5, 10, 15, 20], // deviation from ideal (55° is normal)
+    description: '頭蓋椎骨角（>53°正常, <45°重度）',
+    useAbsolute: true,
+    invertScore: true, // lower = worse
+  },
+  forward_shoulder_angle: {
+    name: '巻き肩 (FSA)', icon: '🔄', unit: '°',
+    ideal: 0, thresholds: [5, 10, 15, 20],
+    description: '肩の前方偏位角度（0°が理想、>15°で巻き肩）',
+    useAbsolute: true,
+  },
+  thoracic_kyphosis: {
+    name: '猫背', icon: '🐱', unit: '°',
+    ideal: 30, thresholds: [5, 10, 15, 20], // deviation from ideal 30°
+    description: '胸椎後弯角度（正常: 20〜40°）',
+    useAbsolute: true,
+  },
+  pelvic_anterior_tilt: {
+    name: '骨盤前傾', icon: '⚖️', unit: '°',
+    ideal: 10, thresholds: [5, 10, 15, 20],
+    description: '骨盤前傾角度（正常: 7〜13°）',
+    useAbsolute: true,
+  },
+  plumb_line_deviation: {
+    name: 'プラムライン偏差', icon: '📐', unit: '%',
+    ideal: 0, thresholds: [2, 4, 6, 8],
+    description: '理想的な垂直軸からのずれ（0が理想）',
+    useAbsolute: true,
+  },
+};
+
+const RATING_LABELS = ['良好', 'やや注意', '注意', '要改善', '要相談'];
+const RATING_CLASSES = ['rating-good', 'rating-mild', 'rating-moderate', 'rating-poor', 'rating-severe'];
+const RATING_SCORES = [100, 75, 50, 25, 0]; // score per rating level
+
+function rateMetric(key, value) {
+  const def = METRIC_DEFS[key];
+  if (!def || value === null || value === undefined) return null;
+  const deviation = def.useAbsolute ? Math.abs(value - (def.ideal || 0)) : value;
+  for (let i = 0; i < def.thresholds.length; i++) {
+    if (deviation <= def.thresholds[i]) return i;
+  }
+  return 4;
+}
+
+// ── State ──
+let poseLandmarker = null;
+let delegate = '';
+let stream = null;
+let facingMode = 'environment';
+let isDetecting = false;
+let lastVideoTime = -1;
+let frameCount = 0;
+let fpsTime = 0;
+let currentFps = 0;
+
+let appMode = 'simple';
+let selectedSide = 'left';
+let selectedHeight = 160;
+let measurePhase = 'idle';
+let countdownTimer = null;
+let measureStartTime = 0;
+let isSideMeasuring = false;
+
+let emaLandmarks = null;
+let frontFrames = [];
+let sideFrames = [];
+let confidenceAccum = {};
+
+// ── DOM References ──
+const $ = id => document.getElementById(id);
+const video = $('video');
+const overlay = $('overlay');
+const ctx = overlay.getContext('2d');
+
+// ── Utility Functions ──
+function rad2deg(r) { return r * 180 / Math.PI; }
+
+function distance(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function angleBetween3(a, b, c) {
+  const ba = { x: a.x - b.x, y: a.y - b.y };
+  const bc = { x: c.x - b.x, y: c.y - b.y };
+  const dot = ba.x * bc.x + ba.y * bc.y;
+  const magBA = Math.sqrt(ba.x * ba.x + ba.y * ba.y);
+  const magBC = Math.sqrt(bc.x * bc.x + bc.y * bc.y);
+  if (magBA === 0 || magBC === 0) return null;
+  return rad2deg(Math.acos(Math.max(-1, Math.min(1, dot / (magBA * magBC)))));
+}
+
+function ema(prev, curr) {
+  if (prev === null || prev === undefined) return curr;
+  return prev + EMA_ALPHA * (curr - prev);
+}
+
+function isVisible(lm, idx) {
+  return lm[idx] && (lm[idx].visibility || 0) >= VISIBILITY_THRESHOLD;
+}
+
+function getLm(lm, idx) {
+  return lm[idx] || { x: 0, y: 0, z: 0, visibility: 0 };
+}
+
+// ── Angle Calculation: Front ──
+function calcFrontMetrics(lm) {
+  const m = {};
+  const lEar = getLm(lm, LM.L_EAR), rEar = getLm(lm, LM.R_EAR);
+  const lSh = getLm(lm, LM.L_SHOULDER), rSh = getLm(lm, LM.R_SHOULDER);
+  const lHip = getLm(lm, LM.L_HIP), rHip = getLm(lm, LM.R_HIP);
+  const lKnee = getLm(lm, LM.L_KNEE), rKnee = getLm(lm, LM.R_KNEE);
+  const lAnkle = getLm(lm, LM.L_ANKLE), rAnkle = getLm(lm, LM.R_ANKLE);
+
+  // F1: Head lateral tilt (ear-to-ear angle from horizontal)
+  if (isVisible(lm, LM.L_EAR) && isVisible(lm, LM.R_EAR)) {
+    const dy = lEar.y - rEar.y;
+    const dx = rEar.x - lEar.x;
+    m.head_lateral_tilt = rad2deg(Math.atan2(dy, dx));
+  }
+
+  // F2: Shoulder asymmetry (shoulder line angle from horizontal)
+  if (isVisible(lm, LM.L_SHOULDER) && isVisible(lm, LM.R_SHOULDER)) {
+    const dy = lSh.y - rSh.y;
+    const dx = rSh.x - lSh.x;
+    m.shoulder_asymmetry = rad2deg(Math.atan2(dy, dx));
+  }
+
+  // F3: Trunk lateral shift (mid-shoulder to mid-hip deviation from vertical)
+  if (isVisible(lm, LM.L_SHOULDER) && isVisible(lm, LM.R_SHOULDER) &&
+      isVisible(lm, LM.L_HIP) && isVisible(lm, LM.R_HIP)) {
+    const shMidX = (lSh.x + rSh.x) / 2, shMidY = (lSh.y + rSh.y) / 2;
+    const hipMidX = (lHip.x + rHip.x) / 2, hipMidY = (lHip.y + rHip.y) / 2;
+    m.trunk_lateral_shift = rad2deg(Math.atan2(shMidX - hipMidX, hipMidY - shMidY));
+  }
+
+  // F4: Pelvic tilt (hip line angle from horizontal)
+  if (isVisible(lm, LM.L_HIP) && isVisible(lm, LM.R_HIP)) {
+    const dy = lHip.y - rHip.y;
+    const dx = rHip.x - lHip.x;
+    m.pelvic_tilt = rad2deg(Math.atan2(dy, dx));
+  }
+
+  // F5: Knee valgus angle (average of both knees: hip-knee-ankle angle deviation from 180)
+  const kneeAngles = [];
+  if (isVisible(lm, LM.L_HIP) && isVisible(lm, LM.L_KNEE) && isVisible(lm, LM.L_ANKLE)) {
+    const a = angleBetween3(lHip, lKnee, lAnkle);
+    if (a !== null) kneeAngles.push(180 - a);
+  }
+  if (isVisible(lm, LM.R_HIP) && isVisible(lm, LM.R_KNEE) && isVisible(lm, LM.R_ANKLE)) {
+    const a = angleBetween3(rHip, rKnee, rAnkle);
+    if (a !== null) kneeAngles.push(180 - a);
+  }
+  if (kneeAngles.length > 0) {
+    m.knee_valgus_angle = kneeAngles.reduce((a, b) => a + b, 0) / kneeAngles.length;
+  }
+
+  return m;
+}
+
+// ── Angle Calculation: Side ──
+function calcSideMetrics(lm) {
+  const m = {};
+  const ear = isVisible(lm, LM.L_EAR) ? getLm(lm, LM.L_EAR) : getLm(lm, LM.R_EAR);
+  const sh = isVisible(lm, LM.L_SHOULDER) ? getLm(lm, LM.L_SHOULDER) : getLm(lm, LM.R_SHOULDER);
+  const hip = isVisible(lm, LM.L_HIP) ? getLm(lm, LM.L_HIP) : getLm(lm, LM.R_HIP);
+  const knee = isVisible(lm, LM.L_KNEE) ? getLm(lm, LM.L_KNEE) : getLm(lm, LM.R_KNEE);
+  const ankle = isVisible(lm, LM.L_ANKLE) ? getLm(lm, LM.L_ANKLE) : getLm(lm, LM.R_ANKLE);
+
+  const earVis = isVisible(lm, LM.L_EAR) || isVisible(lm, LM.R_EAR);
+  const shVis = isVisible(lm, LM.L_SHOULDER) || isVisible(lm, LM.R_SHOULDER);
+  const hipVis = isVisible(lm, LM.L_HIP) || isVisible(lm, LM.R_HIP);
+  const kneeVis = isVisible(lm, LM.L_KNEE) || isVisible(lm, LM.R_KNEE);
+  const ankleVis = isVisible(lm, LM.L_ANKLE) || isVisible(lm, LM.R_ANKLE);
+
+  // S1: CVA (Craniovertebral Angle) — ear-to-shoulder angle from horizontal
+  // Higher = more upright. Normal >53°, <45° severe FHP
+  if (earVis && shVis) {
+    const dx = Math.abs(ear.x - sh.x);
+    const dy = sh.y - ear.y; // shoulder is below ear
+    m.cva = rad2deg(Math.atan2(dy, dx));
+  }
+
+  // S2: Forward Shoulder Angle — shoulder offset from hip in sagittal plane
+  if (shVis && hipVis) {
+    const dx = sh.x - hip.x;
+    const dy = hip.y - sh.y;
+    m.forward_shoulder_angle = rad2deg(Math.atan2(Math.abs(dx), dy));
+  }
+
+  // S3: Thoracic kyphosis estimate — shoulder-to-hip angle in sagittal plane
+  if (shVis && hipVis && earVis) {
+    // Use ear-shoulder-hip angle as proxy
+    const a = angleBetween3(ear, sh, hip);
+    if (a !== null) m.thoracic_kyphosis = 180 - a;
+  }
+
+  // S4: Pelvic anterior tilt — hip-knee angle from vertical
+  if (hipVis && kneeVis) {
+    const dx = hip.x - knee.x;
+    const dy = knee.y - hip.y;
+    m.pelvic_anterior_tilt = rad2deg(Math.atan2(Math.abs(dx), dy));
+  }
+
+  // S5: Plumb line deviation — how far key points deviate from ideal vertical
+  // Ideal: ear, shoulder, hip, knee, ankle all on same vertical line
+  if (earVis && shVis && hipVis && ankleVis) {
+    const refX = ankle.x; // ankle as reference vertical
+    const deviations = [
+      Math.abs(ear.x - refX),
+      Math.abs(sh.x - refX),
+      Math.abs(hip.x - refX),
+    ];
+    if (kneeVis) deviations.push(Math.abs(knee.x - refX));
+    const avgDev = deviations.reduce((a, b) => a + b, 0) / deviations.length;
+    // Normalize by body height (ear-to-ankle distance)
+    const bodyH = Math.abs(ear.y - ankle.y);
+    m.plumb_line_deviation = bodyH > 0.01 ? (avgDev / bodyH) * 100 : 0;
+  }
+
+  return m;
+}
+
+// ── EMA Smoothing ──
+function smoothLandmarks(rawLm) {
+  if (!emaLandmarks) {
+    emaLandmarks = rawLm.map(p => ({ x: p.x, y: p.y, z: p.z, visibility: p.visibility }));
+    return emaLandmarks;
+  }
+  emaLandmarks = rawLm.map((p, i) => ({
+    x: ema(emaLandmarks[i]?.x, p.x),
+    y: ema(emaLandmarks[i]?.y, p.y),
+    z: ema(emaLandmarks[i]?.z, p.z),
+    visibility: p.visibility,
+  }));
+  return emaLandmarks;
+}
+
+// ── Statistics ──
+function calcStats(values) {
+  const filtered = values.filter(v => v !== null && v !== undefined);
+  if (filtered.length === 0) return null;
+  const n = filtered.length;
+  const avg = filtered.reduce((a, b) => a + b, 0) / n;
+  const sd = Math.sqrt(filtered.reduce((s, v) => s + (v - avg) ** 2, 0) / n);
+  const min = Math.min(...filtered);
+  const max = Math.max(...filtered);
+  return { avg: +avg.toFixed(1), sd: +sd.toFixed(1), min: +min.toFixed(1), max: +max.toFixed(1) };
+}
+
+// ── Drawing ──
+function drawSkeleton(lm) {
+  const w = overlay.width, h = overlay.height;
+  ctx.clearRect(0, 0, w, h);
+  if (!lm || lm.length === 0) return;
+
+  // Draw plumb line during side measurement
+  if (isSideMeasuring) {
+    const ankle = isVisible(lm, LM.L_ANKLE) ? getLm(lm, LM.L_ANKLE) :
+                  isVisible(lm, LM.R_ANKLE) ? getLm(lm, LM.R_ANKLE) : null;
+    if (ankle) {
+      ctx.save();
+      ctx.setLineDash([8, 6]);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255, 215, 0, 0.6)';
+      ctx.beginPath();
+      ctx.moveTo(ankle.x * w, 0);
+      ctx.lineTo(ankle.x * w, h);
+      ctx.stroke();
+      ctx.restore();
+
+      // Label
+      ctx.font = '12px -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(255, 215, 0, 0.8)';
+      ctx.fillText('理想ライン', ankle.x * w + 6, 20);
+    }
+  }
+
+  // Connections
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = 'rgba(50, 173, 230, 0.7)';
+  for (const [si, ei] of SKELETON_CONNECTIONS) {
+    const s = lm[si], e = lm[ei];
+    if (!s || !e || (s.visibility || 0) < VISIBILITY_THRESHOLD || (e.visibility || 0) < VISIBILITY_THRESHOLD) continue;
+    ctx.beginPath();
+    ctx.moveTo(s.x * w, s.y * h);
+    ctx.lineTo(e.x * w, e.y * h);
+    ctx.stroke();
+  }
+
+  // Points
+  for (const idx of TRACKED_INDICES) {
+    const p = lm[idx];
+    if (!p || (p.visibility || 0) < VISIBILITY_THRESHOLD) continue;
+    ctx.beginPath();
+    ctx.arc(p.x * w, p.y * h, 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+// ── Frame Processing ──
+function processFrame(rawLm, timestamp) {
+  const lm = smoothLandmarks(rawLm);
+
+  let visCount = 0;
+  for (const idx of TRACKED_INDICES) {
+    if (isVisible(lm, idx)) visCount++;
+  }
+  $('landmarkCount').textContent = `${visCount}/${TRACKED_INDICES.length}`;
+
+  if (measurePhase === 'position' || measurePhase === 'side-position') {
+    $('btnBeginMeasure').disabled = visCount < 5;
+  }
+
+  // Accumulate confidence
+  for (let i = 0; i < TRACKED_INDICES.length; i++) {
+    const idx = TRACKED_INDICES[i];
+    const name = TRACKED_NAMES[i];
+    if (!confidenceAccum[name]) confidenceAccum[name] = { vis: [] };
+    confidenceAccum[name].vis.push(lm[idx]?.visibility || 0);
+  }
+
+  // Record frame during measurement
+  if (measurePhase === 'measuring' || measurePhase === 'side-measuring') {
+    const isSide = measurePhase === 'side-measuring';
+    const metrics = isSide ? calcSideMetrics(lm) : calcFrontMetrics(lm);
+
+    const frameData = {
+      timestamp,
+      landmarks: TRACKED_INDICES.map(idx => ({
+        x: +(lm[idx].x).toFixed(5),
+        y: +(lm[idx].y).toFixed(5),
+        z: +(lm[idx].z).toFixed(5),
+        visibility: +(lm[idx].visibility || 0).toFixed(3),
+      })),
+      metrics,
+    };
+
+    if (isSide) {
+      sideFrames.push(frameData);
+    } else {
+      frontFrames.push(frameData);
+    }
+  }
+
+  drawSkeleton(lm);
+}
+
+// ── Detection Loop ──
+function detectLoop() {
+  if (!isDetecting) return;
+  requestAnimationFrame(detectLoop);
+  if (!poseLandmarker || video.readyState < 2) return;
+
+  const t = video.currentTime;
+  if (t === lastVideoTime) return;
+  lastVideoTime = t;
+
+  const ts = performance.now();
+  let result;
+  try {
+    result = poseLandmarker.detectForVideo(video, ts);
+  } catch (e) {
+    return;
+  }
+
+  frameCount++;
+  if (ts - fpsTime >= 1000) {
+    currentFps = frameCount;
+    frameCount = 0;
+    fpsTime = ts;
+    $('fpsBadge').textContent = currentFps + ' FPS';
+  }
+
+  if (result.landmarks && result.landmarks.length > 0) {
+    processFrame(result.landmarks[0], ts);
+  } else {
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    $('landmarkCount').textContent = `0/${TRACKED_INDICES.length}`;
+    if (measurePhase === 'position' || measurePhase === 'side-position') {
+      $('btnBeginMeasure').disabled = true;
+    }
+  }
+}
+
+// ── Camera ──
+async function startCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    video.srcObject = stream;
+    const isMirror = facingMode === 'user';
+    video.classList.toggle('mirror', isMirror);
+    overlay.classList.toggle('mirror', isMirror);
+
+    await new Promise(r => video.addEventListener('loadeddata', r, { once: true }));
+    overlay.width = video.videoWidth;
+    overlay.height = video.videoHeight;
+  } catch (e) {
+    alert('カメラにアクセスできません: ' + e.message);
+  }
+}
+
+// ── MediaPipe Init ──
+async function initMediaPipe() {
+  try {
+    $('loadingText').textContent = 'WASM ランタイムを読み込み中...';
+    const vision = await FilesetResolver.forVisionTasks(VISION_CDN);
+    $('loadingText').textContent = 'GPU で姿勢推定モデルを読み込み中...';
+    poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: MODEL_FULL, delegate: 'GPU' },
+      runningMode: 'VIDEO',
+      numPoses: 1,
+      minPoseDetectionConfidence: 0.15,
+      minPosePresenceConfidence: 0.15,
+      minTrackingConfidence: 0.15,
+    });
+    delegate = 'GPU';
+  } catch (e) {
+    console.warn('GPU failed:', e);
+    try {
+      $('loadingText').textContent = 'CPU モードで再試行中...';
+      const vision = await FilesetResolver.forVisionTasks(VISION_CDN);
+      poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: MODEL_LITE, delegate: 'CPU' },
+        runningMode: 'VIDEO',
+        numPoses: 1,
+        minPoseDetectionConfidence: 0.5,
+        minPosePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+      delegate = 'CPU';
+    } catch (e2) {
+      $('loadingText').textContent = 'エラー: ' + e2.message;
+      return;
+    }
+  }
+  navigateTo('mode');
+}
+
+// ── Navigation ──
+function navigateTo(screen) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const map = { loading: 'screenLoading', mode: 'screenMode', settings: 'screenSettings', measure: 'screenMeasure', results: 'screenResults' };
+  $(map[screen]).classList.add('active');
+}
+
+// ── Wheel Picker ──
+function initWheelPicker() {
+  const container = $('heightPicker');
+  const list = $('heightPickerList');
+  const minVal = 100, maxVal = 200;
+  const itemH = 40;
+  const padding = 80;
+
+  list.innerHTML = '';
+  for (let v = minVal; v <= maxVal; v++) {
+    const div = document.createElement('div');
+    div.className = 'wheel-picker-item';
+    div.textContent = v;
+    div.dataset.value = v;
+    list.appendChild(div);
+  }
+
+  const totalItems = maxVal - minVal + 1;
+  let currentIndex = selectedHeight - minVal;
+  let offset = -(currentIndex * itemH) + padding;
+
+  function updatePosition(animated) {
+    list.style.transition = animated ? 'transform 0.3s cubic-bezier(0.2, 0.8, 0.3, 1)' : 'none';
+    list.style.transform = `translateY(${offset}px)`;
+    const items = list.children;
+    for (let i = 0; i < items.length; i++) {
+      items[i].classList.toggle('selected', i === currentIndex);
+    }
+    selectedHeight = currentIndex + minVal;
+  }
+
+  function snapToNearest() {
+    currentIndex = Math.round((-offset + padding) / itemH);
+    currentIndex = Math.max(0, Math.min(totalItems - 1, currentIndex));
+    offset = -(currentIndex * itemH) + padding;
+    updatePosition(true);
+  }
+
+  let startY = 0, startOffset = 0, lastY = 0, lastTime = 0, velocity = 0;
+  let isDragging = false;
+
+  function onStart(e) {
+    isDragging = true;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    startY = y; lastY = y; lastTime = Date.now(); startOffset = offset; velocity = 0;
+    list.style.transition = 'none';
+  }
+
+  function onMove(e) {
+    if (!isDragging) return;
+    e.preventDefault();
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    const now = Date.now();
+    const dt = now - lastTime;
+    if (dt > 0) velocity = (y - lastY) / dt;
+    lastY = y; lastTime = now;
+    offset = startOffset + (y - startY);
+    const maxOffset = padding;
+    const minOffset = -((totalItems - 1) * itemH) + padding;
+    if (offset > maxOffset) offset = maxOffset + (offset - maxOffset) * 0.3;
+    if (offset < minOffset) offset = minOffset + (offset - minOffset) * 0.3;
+    list.style.transform = `translateY(${offset}px)`;
+  }
+
+  function onEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    const inertia = velocity * 150;
+    offset += inertia;
+    const maxOffset = padding;
+    const minOffset = -((totalItems - 1) * itemH) + padding;
+    offset = Math.max(minOffset, Math.min(maxOffset, offset));
+    snapToNearest();
+  }
+
+  container.addEventListener('touchstart', onStart, { passive: true });
+  container.addEventListener('touchmove', onMove, { passive: false });
+  container.addEventListener('touchend', onEnd);
+  container.addEventListener('mousedown', onStart);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onEnd);
+  updatePosition(false);
+}
+
+// ── Measurement Flow ──
+function startCountdown(onComplete) {
+  let count = COUNTDOWN_DURATION;
+  const numEl = $('countdownNumber');
+  const labelEl = $('countdownLabel');
+
+  numEl.classList.add('visible');
+  labelEl.textContent = '準備してください';
+  numEl.textContent = count;
+  numEl.style.fontSize = '100px';
+
+  countdownTimer = setInterval(() => {
+    count--;
+    if (count <= 0) {
+      clearInterval(countdownTimer);
+      numEl.classList.remove('visible');
+      labelEl.textContent = '';
+      onComplete();
+    } else {
+      numEl.textContent = count;
+    }
+  }, 1000);
+}
+
+function startMeasuring(isSide) {
+  measurePhase = isSide ? 'side-measuring' : 'measuring';
+  isSideMeasuring = isSide;
+  $('statusBadge').textContent = '計測中';
+  $('statusBadge').className = 'status-badge recording';
+  $('measureControls').style.display = 'none';
+  $('measureProgress').style.display = 'block';
+
+  const numEl = $('countdownNumber');
+  const labelEl = $('countdownLabel');
+  numEl.style.fontSize = '120px';
+  numEl.classList.add('visible');
+  labelEl.textContent = '計測中';
+
+  let remaining = MEASURE_DURATION;
+  numEl.textContent = remaining;
+  measureStartTime = performance.now();
+
+  countdownTimer = setInterval(() => {
+    remaining--;
+    const elapsed = MEASURE_DURATION - remaining;
+    $('measureProgressBar').style.width = `${(elapsed / MEASURE_DURATION) * 100}%`;
+
+    if (remaining <= 0) {
+      clearInterval(countdownTimer);
+      numEl.classList.remove('visible');
+      labelEl.textContent = '';
+      $('measureProgress').style.display = 'none';
+
+      if (appMode === 'thorough' && !isSide) {
+        measurePhase = 'side-switch';
+        showSideSwitch();
+      } else {
+        measurePhase = 'done';
+        isSideMeasuring = false;
+        finishMeasurement();
+      }
+    } else {
+      numEl.textContent = remaining;
+    }
+  }, 1000);
+}
+
+function showSideSwitch() {
+  const overlay = $('sideSwitchOverlay');
+  const sideText = selectedSide === 'left' ? '左側面' : '右側面';
+  $('sideSwitchText').textContent = `カメラを移動して、${sideText}が映るようにしてください`;
+  overlay.classList.add('visible');
+}
+
+function startSidePosition() {
+  $('sideSwitchOverlay').classList.remove('visible');
+  measurePhase = 'side-position';
+  emaLandmarks = null;
+  $('statusBadge').textContent = '側面 準備中';
+  $('statusBadge').className = 'status-badge loading';
+  $('measureControls').style.display = 'flex';
+  $('btnBeginMeasure').disabled = true;
+  $('btnBeginMeasure').textContent = '側面計測開始';
+}
+
+function beginMeasure() {
+  if (measurePhase === 'position') {
+    measurePhase = 'countdown';
+    $('measureControls').style.display = 'none';
+    startCountdown(() => startMeasuring(false));
+  } else if (measurePhase === 'side-position') {
+    measurePhase = 'side-countdown';
+    $('measureControls').style.display = 'none';
+    startCountdown(() => startMeasuring(true));
+  }
+}
+
+function finishMeasurement() {
+  isDetecting = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  showResultsScreen();
+}
+
+// ── Results Screen ──
+function showResultsScreen() {
+  // Calculate metric averages
+  const frontAvgs = {};
+  for (const key of FRONT_METRIC_KEYS) {
+    const values = frontFrames.map(f => f.metrics[key]).filter(v => v !== null && v !== undefined);
+    if (values.length > 0) {
+      frontAvgs[key] = +(values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
+    }
+  }
+
+  const sideAvgs = {};
+  if (appMode === 'thorough') {
+    for (const key of SIDE_METRIC_KEYS) {
+      const values = sideFrames.map(f => f.metrics[key]).filter(v => v !== null && v !== undefined);
+      if (values.length > 0) {
+        sideAvgs[key] = +(values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
+      }
+    }
+  }
+
+  // Calculate total score
+  const allMetrics = { ...frontAvgs, ...sideAvgs };
+  let totalScore = 0;
+  let metricCount = 0;
+  for (const [key, value] of Object.entries(allMetrics)) {
+    const rating = rateMetric(key, value);
+    if (rating !== null) {
+      totalScore += RATING_SCORES[rating];
+      metricCount++;
+    }
+  }
+  const finalScore = metricCount > 0 ? Math.round(totalScore / metricCount) : 0;
+
+  // Update score display
+  const scoreColor = finalScore >= 80 ? 'var(--green)' : finalScore >= 60 ? 'var(--orange)' : 'var(--red)';
+  $('resultIcon').style.background = scoreColor;
+  $('scoreText').textContent = finalScore;
+  $('scoreText').style.color = scoreColor;
+  const arc = $('scoreArc');
+  arc.style.stroke = scoreColor;
+  const circumference = 326.7;
+  arc.style.strokeDashoffset = circumference - (circumference * finalScore / 100);
+
+  $('resultSummaryText').textContent =
+    (appMode === 'simple' ? '簡易モード' : 'しっかりモード') + `・${MEASURE_DURATION}秒間`;
+
+  // Build metric cards
+  const container = $('resultsContent');
+  container.innerHTML = '';
+
+  function addSection(title) {
+    const h = document.createElement('div');
+    h.className = 'section-title';
+    h.textContent = title;
+    container.appendChild(h);
+  }
+
+  function addMetricCard(key, value) {
+    const def = METRIC_DEFS[key];
+    if (!def || value === null || value === undefined) return;
+    const rating = rateMetric(key, value);
+    if (rating === null) return;
+
+    const card = document.createElement('div');
+    card.className = 'metric-card';
+    card.innerHTML = `
+      <div class="metric-icon" style="background: ${['#E8F5E9','#FFF8E1','#FFF3E0','#FFEBEE','#F3E5F5'][rating]};">
+        ${def.icon}
+      </div>
+      <div class="metric-info">
+        <div class="metric-name">${def.name}</div>
+        <div class="metric-value">${value}${def.unit} (${def.description})</div>
+      </div>
+      <span class="metric-rating ${RATING_CLASSES[rating]}">${RATING_LABELS[rating]}</span>
+    `;
+    container.appendChild(card);
+  }
+
+  addSection('正面（前額面）');
+  for (const key of FRONT_METRIC_KEYS) {
+    addMetricCard(key, frontAvgs[key]);
+  }
+
+  if (appMode === 'thorough') {
+    addSection('側面（矢状面）');
+    for (const key of SIDE_METRIC_KEYS) {
+      addMetricCard(key, sideAvgs[key]);
+    }
+  }
+
+  navigateTo('results');
+}
+
+// ── TXT Generation ──
+function generateTxt(detailed) {
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 19);
+
+  let txt = '';
+
+  txt += '[header]\n';
+  txt += `app: 姿勢スキャン\n`;
+  txt += `version: 1.0\n`;
+  txt += `date: ${dateStr}\n`;
+  txt += `mode: ${appMode}\n`;
+  txt += `duration_sec: ${MEASURE_DURATION}\n`;
+  txt += `fps: ${currentFps}\n`;
+  txt += `total_frames: ${frontFrames.length + sideFrames.length}\n`;
+  txt += `height_cm: ${selectedHeight}\n`;
+  if (appMode === 'thorough') {
+    txt += `side_view: ${selectedSide}\n`;
+    txt += `side_frames: ${sideFrames.length}\n`;
+  }
+  txt += '\n';
+
+  txt += '[front_metrics_summary]\n';
+  for (const key of FRONT_METRIC_KEYS) {
+    const values = frontFrames.map(f => f.metrics[key]).filter(v => v !== null && v !== undefined);
+    if (values.length === 0) continue;
+    const s = calcStats(values);
+    const rating = rateMetric(key, s.avg);
+    txt += `${key}: avg=${s.avg} sd=${s.sd} min=${s.min} max=${s.max} rating=${rating !== null ? RATING_LABELS[rating] : 'N/A'}\n`;
+  }
+  txt += '\n';
+
+  if (appMode === 'thorough' && sideFrames.length > 0) {
+    txt += '[side_metrics_summary]\n';
+    for (const key of SIDE_METRIC_KEYS) {
+      const values = sideFrames.map(f => f.metrics[key]).filter(v => v !== null && v !== undefined);
+      if (values.length === 0) continue;
+      const s = calcStats(values);
+      const rating = rateMetric(key, s.avg);
+      txt += `${key}: avg=${s.avg} sd=${s.sd} min=${s.min} max=${s.max} rating=${rating !== null ? RATING_LABELS[rating] : 'N/A'}\n`;
+    }
+    txt += '\n';
+  }
+
+  txt += '[landmark_confidence]\n';
+  for (const name of TRACKED_NAMES) {
+    const data = confidenceAccum[name];
+    if (!data || data.vis.length === 0) continue;
+    const avgVis = (data.vis.reduce((a, b) => a + b, 0) / data.vis.length).toFixed(2);
+    txt += `${name}: visibility=${avgVis}\n`;
+  }
+  txt += '\n';
+
+  txt += ANALYSIS_HINTS;
+  txt += '\n';
+  txt += REFERENCES;
+  txt += '\n';
+
+  if (detailed) {
+    txt += generateFrameDataSection('front', frontFrames, FRONT_METRIC_KEYS);
+    if (appMode === 'thorough' && sideFrames.length > 0) {
+      txt += generateFrameDataSection('side', sideFrames, SIDE_METRIC_KEYS);
+    }
+  }
+
+  return txt;
+}
+
+function generateFrameDataSection(prefix, frames, metricKeys) {
+  if (frames.length === 0) return '';
+  const coordCols = TRACKED_NAMES.flatMap(n => [`${n}_x`, `${n}_y`, `${n}_z`]);
+  const header = ['frame', 'timestamp', ...coordCols, ...metricKeys].join(',');
+  let section = `[${prefix}_frame_data]\n`;
+  section += header + '\n';
+
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i];
+    const row = [i, ((f.timestamp - frames[0].timestamp) / 1000).toFixed(3)];
+    for (const lm of f.landmarks) {
+      row.push(lm.x, lm.y, lm.z);
+    }
+    for (const key of metricKeys) {
+      const v = f.metrics[key];
+      row.push(v !== null && v !== undefined ? (+v).toFixed(1) : '');
+    }
+    section += row.join(',') + '\n';
+  }
+
+  section += '\n';
+  return section;
+}
+
+function downloadTxt(content, filename) {
+  const blob = new Blob([content], { type: 'text/plain; charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function getExportFilename(detailed) {
+  const now = new Date();
+  const d = now.toISOString().slice(0, 10);
+  const t = now.toTimeString().slice(0, 5).replace(':', '');
+  return `posture_scan_${d}_${t}${detailed ? '_detail' : ''}.txt`;
+}
+
+// ── Event Handlers ──
+function setupEventHandlers() {
+  $('btnSimple').addEventListener('click', () => {
+    appMode = 'simple';
+    $('sideSelectionCard').style.display = 'none';
+    navigateTo('settings');
+  });
+  $('btnThorough').addEventListener('click', () => {
+    appMode = 'thorough';
+    $('sideSelectionCard').style.display = 'block';
+    navigateTo('settings');
+  });
+
+  $('btnSideLeft').addEventListener('click', () => {
+    selectedSide = 'left';
+    $('sideSegment').classList.remove('right');
+    $('btnSideLeft').classList.add('active');
+    $('btnSideRight').classList.remove('active');
+    $('sideDescText').textContent = '左側面から撮影します。壁やドアの前など、背景がシンプルな場所がおすすめです';
+  });
+  $('btnSideRight').addEventListener('click', () => {
+    selectedSide = 'right';
+    $('sideSegment').classList.add('right');
+    $('btnSideRight').classList.add('active');
+    $('btnSideLeft').classList.remove('active');
+    $('sideDescText').textContent = '右側面から撮影します。壁やドアの前など、背景がシンプルな場所がおすすめです';
+  });
+
+  $('btnStartMeasure').addEventListener('click', async () => {
+    navigateTo('measure');
+    frontFrames = [];
+    sideFrames = [];
+    confidenceAccum = {};
+    emaLandmarks = null;
+    measurePhase = 'position';
+    isSideMeasuring = false;
+
+    $('statusBadge').textContent = '準備中';
+    $('statusBadge').className = 'status-badge loading';
+    $('measureControls').style.display = 'flex';
+    $('btnBeginMeasure').disabled = true;
+    $('btnBeginMeasure').textContent = '計測開始';
+
+    await startCamera();
+    isDetecting = true;
+    lastVideoTime = -1;
+    frameCount = 0;
+    fpsTime = performance.now();
+    detectLoop();
+
+    setTimeout(() => {
+      $('statusBadge').textContent = 'ポジション確認';
+      $('statusBadge').className = 'status-badge ready';
+    }, 500);
+  });
+
+  $('btnBeginMeasure').addEventListener('click', beginMeasure);
+  $('btnSideReady').addEventListener('click', startSidePosition);
+
+  $('btnCameraToggle').addEventListener('click', async () => {
+    facingMode = facingMode === 'user' ? 'environment' : 'user';
+    await startCamera();
+  });
+
+  $('btnExportSimple').addEventListener('click', () => {
+    const txt = generateTxt(false);
+    downloadTxt(txt, getExportFilename(false));
+  });
+  $('btnExportDetail').addEventListener('click', () => {
+    const txt = generateTxt(true);
+    downloadTxt(txt, getExportFilename(true));
+  });
+
+  $('btnRetry').addEventListener('click', () => {
+    frontFrames = [];
+    sideFrames = [];
+    confidenceAccum = {};
+    emaLandmarks = null;
+    measurePhase = 'idle';
+    isSideMeasuring = false;
+    navigateTo('mode');
+  });
+}
+
+// ── Analysis Hints ──
+const ANALYSIS_HINTS = `[analysis_hints]
+- SD値が低すぎる指標は「硬い・緊張している」サインの可能性がある
+- 個人差が大きいため、絶対値より個人のベースラインからのズレで判断すべき
+- 前半と後半のフレームデータを比較すると、15秒間の姿勢ドリフト（疲労・緊張）を検出できる
+- 肩のy座標の周期的振動から呼吸パターン（深さ・頻度）を推定できる可能性がある
+- CVA（頭蓋椎骨角）: >53度が正常、45〜53度が軽〜中等度、<45度が重度の前方頭位
+- FSA（前方肩角度）: 54度以下で巻き肩（Rounded Shoulders）と判定
+- 胸椎後弯: 正常範囲は20〜40度（Cobb角）、40度超で過後弯
+- 骨盤前傾: 正常な前傾は7〜13度。過度な前傾は腰痛リスク
+- 膝外反角: 正常は5〜7度。過度な外反（X脚）は膝関節への負担増
+- プラムライン: 理想的には耳→肩→股関節→膝→くるぶしが垂直一線上
+- 指標間の相関（例: 頭部前方変位↔巻き肩）は代償運動パターンを示唆する
+- 膝アライメントと骨盤傾斜の相関が高い場合、下肢の構造的問題を示唆
+`;
+
+// ── References ──
+const REFERENCES = `[references]
+- Physiopedia: Craniovertebral Angle — FHPの標準的指標。CVA >53°正常, <45°重度
+- IJATT 2021: "Which Specific Angle Measurement Criteria Should be Used" — FSA ≤54°で巻き肩判定
+- JOSPT 1996: "Clinical Measurement of Head and Shoulder Posture Variables" — 頭部・肩部計測の信頼性
+- PMC 2020: "Normal Range of Thoracic Kyphosis and Lumbar Lordosis" — 胸椎後弯正常値20-40°
+- PubMed 2011: "Assessment of pelvic tilt in normal asymptomatic population" — 骨盤前傾平均13°
+- PMC 2024: "Two Methods of Forward Head Posture Assessment" — CVA閾値53°と50°
+- PMC 2012: "Analysis of the Anterior Trunk Symmetry Index (ATSI)" — 体幹対称性評価
+- Physiopedia: Cobb Angle — 側弯症スクリーニング基準10°
+- Physiopedia: Q Angle — 膝アライメント男性12°/女性17°
+- PMC 2021: "Clinical Measures of Pelvic Tilt" — 骨盤傾斜の臨床的計測法
+- ACSM: "Assessing Static Posture Part I" — プラムライン評価法
+- Kendall法: プラムラインの理想的通過点（外耳道→肩峰→大転子→腓骨頭→外果前方）
+- PMC 2024: "Comprehensive analysis of ML pose estimation models" — MediaPipe精度（上肢r=0.91）
+- PMC 2021: "A mobile application tool for standing posture analysis" — モバイル姿勢分析の妥当性
+- Hignett & McAtamney 2000: "REBA: Rapid Entire Body Assessment" — 全身姿勢評価法
+- McAtamney & Corlett 1993: "RULA: survey method for upper limb disorders" — 上肢障害調査法
+- NYPR 1958: New York Posture Rating Chart — 13セグメント3段階評価
+`;
+
+// ── Init ──
+setupEventHandlers();
+initWheelPicker();
+initMediaPipe();
+</script>
+</body>
+</html>
